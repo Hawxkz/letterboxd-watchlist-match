@@ -17,7 +17,7 @@ import {
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 function App() {
-  const [usernames, setUsernames] = useState(['dave', 'davidehrlich']);
+  const [usernames, setUsernames] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingStatus, setLoadingStatus] = useState('');
   const [error, setError] = useState(null);
