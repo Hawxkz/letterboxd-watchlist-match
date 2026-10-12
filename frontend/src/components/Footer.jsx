@@ -49,10 +49,24 @@ export function Footer() {
           </p>
         </div>
 
-        {/* General App Disclaimer */}
-        <p className="text-[11px] text-slate-500">
-          Letterboxd Watchlist Matcher • Nicht offiziell mit Letterboxd verbunden
-        </p>
+        {/* Creator Attribution & General App Disclaimer */}
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-2 text-xs text-slate-400">
+          <p className="text-[11px] text-slate-500">
+            Letterboxd Watchlist Matcher • Nicht offiziell mit Letterboxd verbunden
+          </p>
+          <span className="hidden sm:inline text-slate-700">•</span>
+          <p className="flex items-center gap-1 text-xs">
+            <span className="text-slate-500">By</span>
+            <a
+              href="https://github.com/Hawxkz"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-slate-300 hover:text-[#00e054] transition-colors"
+            >
+              Hawxkz
+            </a>
+          </p>
+        </div>
       </div>
     </footer>
   );

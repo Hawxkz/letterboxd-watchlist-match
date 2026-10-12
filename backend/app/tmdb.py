@@ -145,6 +145,32 @@ def _generate_fallback_details(slug: str, title: str) -> Dict:
     }
 
 
+import re
+
+
+def _clean_title_and_year(title: str, slug: str) -> tuple[str, Optional[int]]:
+    """
+    Extracts clean movie title and optional 4-digit release year from title or slug.
+    Example: 'Brothers (2009)' -> ('Brothers', 2009)
+             'brothers-2009'   -> ('Brothers', 2009)
+    """
+    year: Optional[int] = None
+    clean_title = title.strip()
+
+    # 1. Check title for '(YYYY)' pattern
+    m = re.search(r"^(.*?)\s*\((\d{4})\)\s*$", clean_title)
+    if m:
+        clean_title = m.group(1).strip()
+        year = int(m.group(2))
+    elif slug:
+        # 2. Check if slug ends with '-YYYY'
+        slug_m = re.search(r"-(\d{4})$", slug.strip())
+        if slug_m:
+            year = int(slug_m.group(1))
+
+    return clean_title, year
+
+
 async def fetch_movie_details(
     client: httpx.AsyncClient,
     semaphore: asyncio.Semaphore,
@@ -161,7 +187,9 @@ async def fetch_movie_details(
 
     cached = cache.get(cache_key)
     if cached is not None:
-        return cached
+        # Ignore corrupt/empty cached entries (e.g. 0 min and 0 rating)
+        if cached.get("runtime") or cached.get("rating"):
+            return cached
 
     api_key = get_tmdb_api_key()
     if not api_key:
@@ -173,19 +201,24 @@ async def fetch_movie_details(
     # Live TMDB API call with concurrency limit
     async with semaphore:
         try:
+            clean_title, year = _clean_title_and_year(title, slug)
+
             # Prepare auth: Support both TMDB Read Access Token (JWT Bearer) and legacy 32-char API key
             headers = {}
             params = {
-                "query": title,
+                "query": clean_title,
                 "language": lang,
                 "include_adult": "false",
             }
+            if year:
+                params["primary_release_year"] = str(year)
+
             if api_key.startswith("ey") or len(api_key) > 40:
                 headers["Authorization"] = f"Bearer {api_key}"
             else:
                 params["api_key"] = api_key
 
-            # 1. Search for movie by title
+            # 1. Search for movie by title (and year if present)
             search_url = "https://api.themoviedb.org/3/search/movie"
             resp = await client.get(search_url, params=params, headers=headers, timeout=8.0)
             if resp.status_code != 200:
@@ -194,6 +227,14 @@ async def fetch_movie_details(
 
             search_data = resp.json()
             results = search_data.get("results", [])
+
+            # Fallback: if search with year found 0 results, retry without year
+            if not results and year and "primary_release_year" in params:
+                params.pop("primary_release_year", None)
+                retry_resp = await client.get(search_url, params=params, headers=headers, timeout=8.0)
+                if retry_resp.status_code == 200:
+                    results = retry_resp.json().get("results", [])
+
             if not results:
                 logger.info(f"TMDB search returned 0 results for '{title}'.")
                 return _generate_fallback_details(slug, title)

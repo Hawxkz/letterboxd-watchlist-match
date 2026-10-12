@@ -8,9 +8,9 @@ export function MovieCard({ movie, totalUsers, isPerfectMatch }) {
   const letterboxdUrl = `https://letterboxd.com/film/${movie.slug}/`;
 
   return (
-    <div className="group relative flex flex-col bg-[#161b22] border border-white/10 rounded-xl overflow-hidden shadow-lg transition-all duration-300 hover:-translate-y-1.5 hover:shadow-2xl hover:border-[#00e054]/50">
+    <div className="group relative flex flex-col bg-[#161b22] border border-white/10 rounded-xl overflow-hidden shadow-md transition-[transform,border-color] duration-150 ease-out transform-gpu hover:-translate-y-1 hover:border-[#00e054]/60 will-change-transform">
       {/* Poster Container */}
-      <div className="relative aspect-[2/3] w-full bg-[#0d1117] overflow-hidden flex items-center justify-center">
+      <div className="relative aspect-[2/3] w-full bg-[#0d1117] overflow-hidden flex items-center justify-center border-b border-black/60 [transform:translateZ(0)] isolate">
         {movie.poster_url && !imageError ? (
           <>
             {!imageLoaded && (
@@ -24,7 +24,7 @@ export function MovieCard({ movie, totalUsers, isPerfectMatch }) {
               loading="lazy"
               onLoad={() => setImageLoaded(true)}
               onError={() => setImageError(true)}
-              className={`w-full h-full object-cover transition-transform duration-500 group-hover:scale-105 ${
+              className={`w-full h-full object-cover block select-none transition-transform duration-200 ease-out transform-gpu group-hover:scale-[1.02] ${
                 imageLoaded ? 'opacity-100' : 'opacity-0'
               }`}
             />
@@ -39,7 +39,7 @@ export function MovieCard({ movie, totalUsers, isPerfectMatch }) {
         )}
 
         {/* Hover overlay with Letterboxd button */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end justify-center p-3">
+        <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-150 ease-out flex items-end justify-center p-3 z-10 pointer-events-none group-hover:pointer-events-auto">
           <a
             href={letterboxdUrl}
             target="_blank"
@@ -52,14 +52,14 @@ export function MovieCard({ movie, totalUsers, isPerfectMatch }) {
         </div>
 
         {/* Match Count Badge top-right */}
-        <div className="absolute top-2 right-2">
+        <div className="absolute top-2 right-2 z-10">
           {isPerfectMatch ? (
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-[#00e054] text-black shadow-md">
               <CheckCircle2 className="w-3.5 h-3.5" />
               Volltreffer
             </span>
           ) : (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-cyan-950/80 border border-cyan-500/40 text-cyan-300 shadow-md backdrop-blur-sm">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-[#0d1726] border border-cyan-500/40 text-cyan-300 shadow-md">
               <Users className="w-3 h-3" />
               {movie.match_count}/{totalUsers}
             </span>
