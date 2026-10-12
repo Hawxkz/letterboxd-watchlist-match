@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 from pathlib import Path
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 import httpx
 from bs4 import BeautifulSoup
 import diskcache
@@ -207,24 +207,19 @@ async def scrape_user_watchlist_async(username: str, force_refresh: bool = False
                 seen_slugs.add(m["slug"])
                 unique_raw_movies.append(m)
 
-        # 5. Resolve poster URLs concurrently
-        poster_sem = asyncio.Semaphore(16)
-        poster_tasks = [
-            _resolve_poster_url(client, poster_sem, m["slug"], m["poster_endpoint"])
-            for m in unique_raw_movies
-        ]
-        poster_urls = await asyncio.gather(*poster_tasks)
-
-        # 6. Build Movie objects
+        # 5. Build Movie objects (check cache without making blocking HTTP calls for non-matches)
         final_movies = []
-        for raw, p_url in zip(unique_raw_movies, poster_urls):
+        for raw in unique_raw_movies:
+            slug = raw["slug"]
+            cached_poster = cache.get(f"poster:{slug}")
             final_movies.append(Movie(
-                slug=raw["slug"],
+                slug=slug,
                 title=raw["title"],
-                poster_url=p_url
+                poster_url=cached_poster,
+                poster_endpoint=raw.get("poster_endpoint"),
             ))
 
-        # 7. Store in diskcache (TTL: 60 minutes)
+        # 6. Store in diskcache (TTL: 60 minutes)
         cache.set(
             cache_key,
             [m.model_dump() for m in final_movies],
@@ -232,6 +227,27 @@ async def scrape_user_watchlist_async(username: str, force_refresh: bool = False
         )
 
         return final_movies
+
+
+async def resolve_posters_for_matches(
+    movies: List[Any],
+    movie_endpoints: Dict[str, str]
+) -> None:
+    """Resolve high-res poster URLs only for matched movies concurrently."""
+    missing = [m for m in movies if not m.poster_url and movie_endpoints.get(m.slug)]
+    if not missing:
+        return
+
+    sem = asyncio.Semaphore(16)
+    async with httpx.AsyncClient(headers=DEFAULT_HEADERS, timeout=8.0) as client:
+        tasks = [
+            _resolve_poster_url(client, sem, m.slug, movie_endpoints[m.slug])
+            for m in missing
+        ]
+        urls = await asyncio.gather(*tasks)
+        for m, url in zip(missing, urls):
+            if url:
+                m.poster_url = url
 
 
 def clear_cache(username: Optional[str] = None) -> None:

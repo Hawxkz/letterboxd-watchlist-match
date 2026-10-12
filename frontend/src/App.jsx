@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Header } from './components/Header';
 import { UserTagInput } from './components/UserTagInput';
 import { MovieCard } from './components/MovieCard';
 import { StatsBanner } from './components/StatsBanner';
+import { Footer } from './components/Footer';
 import {
   Film,
   CheckCircle2,
@@ -92,20 +93,30 @@ function App() {
     }
   };
 
-  // Filter movies based on search query
-  const filterByQuery = (movieList) => {
-    if (!searchQuery.trim()) return movieList;
+  // Filter movies based on search query (memoized for snappy UI response)
+  const perfectMatches = useMemo(() => {
+    if (!matchData?.perfect_matches) return [];
+    if (!searchQuery.trim()) return matchData.perfect_matches;
     const q = searchQuery.toLowerCase().trim();
-    return movieList.filter(
+    return matchData.perfect_matches.filter(
       (m) =>
         m.title.toLowerCase().includes(q) ||
         m.slug.toLowerCase().includes(q) ||
         m.matched_users.some((u) => u.toLowerCase().includes(q))
     );
-  };
+  }, [matchData, searchQuery]);
 
-  const perfectMatches = matchData ? filterByQuery(matchData.perfect_matches) : [];
-  const partialMatches = matchData ? filterByQuery(matchData.partial_matches) : [];
+  const partialMatches = useMemo(() => {
+    if (!matchData?.partial_matches) return [];
+    if (!searchQuery.trim()) return matchData.partial_matches;
+    const q = searchQuery.toLowerCase().trim();
+    return matchData.partial_matches.filter(
+      (m) =>
+        m.title.toLowerCase().includes(q) ||
+        m.slug.toLowerCase().includes(q) ||
+        m.matched_users.some((u) => u.toLowerCase().includes(q))
+    );
+  }, [matchData, searchQuery]);
 
   return (
     <div className="min-h-screen bg-[#0d1117] text-slate-100 flex flex-col font-sans selection:bg-[#00e054] selection:text-black">
@@ -334,10 +345,8 @@ function App() {
         )}
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-white/5 py-6 text-center text-xs text-slate-500">
-        <p>Letterboxd Watchlist Matcher • Nicht offiziell mit Letterboxd verbunden</p>
-      </footer>
+      {/* Footer with TMDB Attribution */}
+      <Footer />
     </div>
   );
 }

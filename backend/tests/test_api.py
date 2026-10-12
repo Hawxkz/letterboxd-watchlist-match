@@ -129,3 +129,47 @@ def test_extract_movies_from_soup():
     assert movies[0]["title"] == "Past Lives (2023)"
     assert "https://letterboxd.com/film/past-lives/poster/std/230/?k=123" == movies[0]["poster_endpoint"]
 
+
+def test_tmdb_fallback_and_enrichment():
+    from app.tmdb import _generate_fallback_details, FALLBACK_CATALOG
+    
+    # Test catalog movie
+    inception_data = _generate_fallback_details("inception", "Inception")
+    assert inception_data["rating"] == 8.4
+    assert "Science Fiction" in inception_data["genres"]
+    assert inception_data["runtime"] == 148
+
+    # Test unknown film deterministic mock
+    unknown_data = _generate_fallback_details("some-rare-indie-film", "Some Rare Indie Film")
+    assert isinstance(unknown_data["rating"], float)
+    assert 6.0 <= unknown_data["rating"] <= 9.0
+    assert len(unknown_data["genres"]) >= 1
+    assert isinstance(unknown_data["runtime"], int)
+    assert unknown_data["runtime"] >= 60
+
+
+def test_match_response_includes_tmdb_fields():
+    movies_user1 = [
+        Movie(slug="inception", title="Inception", poster_url="https://img.com/inc.jpg"),
+    ]
+    movies_user2 = [
+        Movie(slug="inception", title="Inception", poster_url="https://img.com/inc.jpg"),
+    ]
+
+    async def mock_scrape(username, force_refresh=False):
+        return movies_user1 if username == "user1" else movies_user2
+
+    with patch("app.main.scrape_user_watchlist_async", side_effect=mock_scrape):
+        response = client.post(
+            "/api/match",
+            json={"usernames": ["user1", "user2"]},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["perfect_matches"]) == 1
+        match = data["perfect_matches"][0]
+        assert match["slug"] == "inception"
+        assert match["rating"] == 8.4
+        assert "Science Fiction" in match["genres"]
+        assert match["runtime"] == 148
+

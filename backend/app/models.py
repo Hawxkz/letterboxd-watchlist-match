@@ -6,6 +6,7 @@ class Movie(BaseModel):
     slug: str = Field(..., description="Letterboxd movie slug")
     title: str = Field(..., description="Movie display title")
     poster_url: Optional[str] = Field(None, description="Direct URL to movie poster image")
+    poster_endpoint: Optional[str] = Field(None, description="Letterboxd endpoint to resolve poster")
 
 
 class MatchRequest(BaseModel):
@@ -37,6 +38,9 @@ class MatchedMovie(BaseModel):
     match_count: int
     matched_users: List[str]
     is_perfect_match: bool
+    rating: Optional[float] = Field(None, description="TMDB average rating (e.g. 8.4)")
+    genres: List[str] = Field(default_factory=list, description="Movie genres (e.g. ['Action', 'Sci-Fi'])")
+    runtime: Optional[int] = Field(None, description="Runtime in minutes (e.g. 148)")
 
 
 class MatchResponse(BaseModel):

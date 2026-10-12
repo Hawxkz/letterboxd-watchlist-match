@@ -7,10 +7,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.models import MatchRequest, MatchResponse, MatchedMovie, Movie
 from app.scraper import (
     scrape_user_watchlist_async,
+    resolve_posters_for_matches,
     LetterboxdUserNotFoundError,
     LetterboxdScraperError,
     clear_cache,
 )
+from app.tmdb import enrich_matched_movies
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("letterboxd_matcher")
@@ -96,6 +98,7 @@ async def match_watchlists(request: MatchRequest):
 
     # Aggregate movie data and track user presence
     movie_info: Dict[str, Dict] = {}  # slug -> {"title": ..., "poster_url": ...}
+    movie_endpoints: Dict[str, str] = {}  # slug -> poster_endpoint
     movie_users: Dict[str, List[str]] = {}  # slug -> list of users
 
     for user, movies in user_watchlists.items():
@@ -111,6 +114,9 @@ async def match_watchlists(request: MatchRequest):
                 # If poster was missing from earlier occurrence, update if this one has it
                 if not movie_info[slug]["poster_url"] and movie.poster_url:
                     movie_info[slug]["poster_url"] = movie.poster_url
+
+            if movie.poster_endpoint and slug not in movie_endpoints:
+                movie_endpoints[slug] = movie.poster_endpoint
 
             if user not in movie_users[slug]:
                 movie_users[slug].append(user)
@@ -136,6 +142,12 @@ async def match_watchlists(request: MatchRequest):
 
     # Sort descending by match_count, then alphabetically by title
     all_matched_movies.sort(key=lambda m: (-m.match_count, m.title.lower()))
+
+    # Resolve posters and fetch TMDB metadata concurrently only for matched movies
+    await asyncio.gather(
+        resolve_posters_for_matches(all_matched_movies, movie_endpoints),
+        enrich_matched_movies(all_matched_movies),
+    )
 
     perfect_matches = [m for m in all_matched_movies if m.is_perfect_match]
     partial_matches = [m for m in all_matched_movies if not m.is_perfect_match]

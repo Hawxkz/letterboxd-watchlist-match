@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ExternalLink, Film, CheckCircle2, Users } from 'lucide-react';
+import { ExternalLink, Film, CheckCircle2, Users, Star, Clock } from 'lucide-react';
 
 export function MovieCard({ movie, totalUsers, isPerfectMatch }) {
   const [imageError, setImageError] = useState(false);
@@ -69,16 +69,48 @@ export function MovieCard({ movie, totalUsers, isPerfectMatch }) {
 
       {/* Content */}
       <div className="p-3.5 flex flex-col flex-1 justify-between gap-2.5">
-        <div>
+        <div className="space-y-1.5">
           <a
             href={letterboxdUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="font-bold text-sm text-slate-100 hover:text-[#00e054] line-clamp-2 transition-colors"
+            className="font-bold text-sm text-slate-100 hover:text-[#00e054] line-clamp-2 transition-colors block"
             title={movie.title}
           >
             {movie.title}
           </a>
+
+          {/* TMDB Meta: Rating & Runtime */}
+          {(movie.rating != null || movie.runtime != null) && (
+            <div className="flex items-center gap-2.5 text-xs text-slate-400">
+              {movie.rating != null && (
+                <span className="flex items-center gap-1 font-semibold text-amber-400">
+                  <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                  {movie.rating}
+                </span>
+              )}
+              {movie.runtime != null && (
+                <span className="flex items-center gap-1 text-slate-400">
+                  <Clock className="w-3.5 h-3.5 text-slate-500" />
+                  {movie.runtime} Min.
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Genres */}
+          {movie.genres && movie.genres.length > 0 && (
+            <div className="flex flex-wrap gap-1 pt-0.5">
+              {movie.genres.map((genre) => (
+                <span
+                  key={genre}
+                  className="px-1.5 py-0.5 bg-slate-800/80 text-emerald-400/90 border border-emerald-500/20 rounded text-[10px] font-medium"
+                >
+                  {genre}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* User Badges */}
