@@ -218,3 +218,22 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Node
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# App cache
+.diskcache/
+cache/
+backend/.cache/
+backend/.diskcache/
+

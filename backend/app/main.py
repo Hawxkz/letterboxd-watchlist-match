@@ -1,0 +1,157 @@
+import asyncio
+import logging
+from typing import Dict, List, Set
+from fastapi import FastAPI, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.models import MatchRequest, MatchResponse, MatchedMovie, Movie
+from app.scraper import (
+    scrape_user_watchlist_async,
+    LetterboxdUserNotFoundError,
+    LetterboxdScraperError,
+    clear_cache,
+)
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("letterboxd_matcher")
+
+app = FastAPI(
+    title="Letterboxd Watchlist Matcher API",
+    description="Find common movies between Letterboxd watchlists",
+    version="1.0.0",
+)
+
+# CORS configuration: Allow frontend at http://localhost:5173
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.get("/")
+def read_root():
+    return {
+        "app": "Letterboxd Watchlist Matcher API",
+        "status": "healthy",
+        "docs": "/docs",
+    }
+
+
+@app.get("/api/health")
+def health_check():
+    return {"status": "ok"}
+
+
+@app.post("/api/match", response_model=MatchResponse)
+async def match_watchlists(request: MatchRequest):
+    """
+    Accepts a list of Letterboxd usernames (min 2), scrapes/retrieves their watchlists,
+    and returns matched movies sorted descending by overlap count.
+    """
+    usernames = request.usernames
+    total_users = len(usernames)
+
+    # Scrape watchlists in parallel
+    try:
+        results = await asyncio.gather(
+            *[scrape_user_watchlist_async(u) for u in usernames],
+            return_exceptions=True
+        )
+    except Exception as e:
+        logger.error(f"Error during parallel scraping: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Unerwarteter Fehler beim Abrufen der Watchlists: {str(e)}",
+        )
+
+    # Check for exceptions
+    user_watchlists: Dict[str, List[Movie]] = {}
+    errors = []
+
+    for user, res in zip(usernames, results):
+        if isinstance(res, LetterboxdUserNotFoundError):
+            errors.append(f"Nutzer '{user}' wurde auf Letterboxd nicht gefunden (404).")
+        elif isinstance(res, LetterboxdScraperError):
+            errors.append(f"Fehler beim Scrapen von '{user}': {str(res)}")
+        elif isinstance(res, Exception):
+            errors.append(f"Fehler bei '{user}': {str(res)}")
+        else:
+            user_watchlists[user] = res
+
+    if errors:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="; ".join(errors),
+        )
+
+    # Calculate overlaps
+    user_stats: Dict[str, int] = {u: len(user_watchlists[u]) for u in usernames}
+
+    # Aggregate movie data and track user presence
+    movie_info: Dict[str, Dict] = {}  # slug -> {"title": ..., "poster_url": ...}
+    movie_users: Dict[str, List[str]] = {}  # slug -> list of users
+
+    for user, movies in user_watchlists.items():
+        for movie in movies:
+            slug = movie.slug
+            if slug not in movie_info:
+                movie_info[slug] = {
+                    "title": movie.title,
+                    "poster_url": movie.poster_url,
+                }
+                movie_users[slug] = []
+            else:
+                # If poster was missing from earlier occurrence, update if this one has it
+                if not movie_info[slug]["poster_url"] and movie.poster_url:
+                    movie_info[slug]["poster_url"] = movie.poster_url
+
+            if user not in movie_users[slug]:
+                movie_users[slug].append(user)
+
+    # Build MatchedMovie items
+    all_matched_movies: List[MatchedMovie] = []
+
+    for slug, u_list in movie_users.items():
+        count = len(u_list)
+        # Only consider movies shared by at least 2 users for matches
+        if count >= 2:
+            is_perfect = count == total_users
+            all_matched_movies.append(
+                MatchedMovie(
+                    slug=slug,
+                    title=movie_info[slug]["title"],
+                    poster_url=movie_info[slug]["poster_url"],
+                    match_count=count,
+                    matched_users=u_list,
+                    is_perfect_match=is_perfect,
+                )
+            )
+
+    # Sort descending by match_count, then alphabetically by title
+    all_matched_movies.sort(key=lambda m: (-m.match_count, m.title.lower()))
+
+    perfect_matches = [m for m in all_matched_movies if m.is_perfect_match]
+    partial_matches = [m for m in all_matched_movies if not m.is_perfect_match]
+
+    return MatchResponse(
+        total_users=total_users,
+        usernames=usernames,
+        user_stats=user_stats,
+        perfect_matches=perfect_matches,
+        partial_matches=partial_matches,
+        all_matches=all_matched_movies,
+    )
+
+
+@app.post("/api/cache/clear")
+def clear_api_cache(username: str = None):
+    """Endpoint to manually clear scraping cache."""
+    clear_cache(username)
+    return {"message": "Cache successfully cleared", "user": username or "all"}
