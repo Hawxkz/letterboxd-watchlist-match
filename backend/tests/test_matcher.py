@@ -81,3 +81,30 @@ async def test_matcher_service_raises_on_missing_user():
         await matcher.match_watchlists(["alice", "unknown_user"])
 
     assert "not found" in str(error_info.value).lower()
+
+
+@pytest.mark.anyio
+async def test_scraper_service_cached_watchlist_flow():
+    """Verifies that LetterboxdScraperService reads from diskcache and supports cache refresh."""
+    from app.services.scraper import LetterboxdScraperService
+    from app.core.cache import cache, clear_cache
+
+    test_user = "cache_tester"
+    clear_cache(test_user)
+
+    cache_key = f"watchlist:{test_user}"
+    cached_payload = [
+        {"slug": "test-film", "title": "Test Film", "poster_url": "https://img/test.jpg", "poster_endpoint": None}
+    ]
+    cache.set(cache_key, cached_payload, expire=300)
+
+    scraper = LetterboxdScraperService()
+
+    # 1. Normal call must return cached list without making HTTP requests
+    result = await scraper.scrape_watchlist(test_user, force_refresh=False)
+    assert len(result) == 1
+    assert result[0].slug == "test-film"
+    assert result[0].title == "Test Film"
+
+    clear_cache(test_user)
+

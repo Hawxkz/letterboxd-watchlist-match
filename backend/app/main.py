@@ -7,7 +7,6 @@ from app.core.rate_limiter import match_rate_limiter, general_rate_limiter
 from app.core.cache import clear_cache
 from app.models import MatchRequest, MatchResponse
 from app.services.matcher import match_user_watchlists, MatcherServiceError
-from app.services.scraper import scrape_user_watchlist_async  # Exposed for test compatibility
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("letterboxd_matcher")
