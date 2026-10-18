@@ -33,7 +33,7 @@ class MatchRequest(BaseModel):
                 cleaned.append(validated)
 
         if len(cleaned) < 2:
-            raise ValueError("Mindestens 2 gültige Letterboxd-Usernamen sind erforderlich.")
+            raise ValueError("At least 2 valid Letterboxd usernames are required.")
 
         # Deduplicate usernames (case-insensitive)
         seen = set()
@@ -45,7 +45,7 @@ class MatchRequest(BaseModel):
                 unique.append(u)
 
         if len(unique) < 2:
-            raise ValueError("Bitte gib mindestens 2 verschiedene Nutzer an.")
+            raise ValueError("Please provide at least 2 distinct user profiles.")
 
         return unique
 

@@ -6,7 +6,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from app.models import Movie, MatchedMovie
-from app.core.cache import cache, WATCHLIST_TTL_SECONDS, POSTER_TTL_SECONDS, clear_cache
+from app.core.cache import cache, WATCHLIST_TTL_SECONDS, POSTER_TTL_SECONDS
 from app.core.security import validate_username_safety, is_safe_scrape_url
 from app.services.interfaces import WatchlistScraperProtocol
 
@@ -29,7 +29,7 @@ class LetterboxdScraperError(Exception):
     pass
 
 
-def _extract_movies_from_soup(soup: BeautifulSoup) -> List[Dict[str, str]]:
+def extract_movies_from_soup(soup: BeautifulSoup) -> List[Dict[str, str]]:
     """Extract raw movie data (slug, title, and poster endpoint) from Letterboxd HTML."""
     extracted_movies: List[Dict[str, str]] = []
 
@@ -89,6 +89,10 @@ def _extract_movies_from_soup(soup: BeautifulSoup) -> List[Dict[str, str]]:
     return extracted_movies
 
 
+# Backward-compatible alias
+_extract_movies_from_soup = extract_movies_from_soup
+
+
 class LetterboxdScraperService:
     """
     Implements WatchlistScraperProtocol for Letterboxd.
@@ -113,7 +117,7 @@ class LetterboxdScraperService:
             return cached_url
 
         # SSRF protection: Ensure target is a validated HTTPS URL
-        if not is_safe_scrape_url(endpoint_url):
+        if not await is_safe_scrape_url(endpoint_url):
             logger.warning(f"SSRF protection blocked poster endpoint: {endpoint_url}")
             return None
 
@@ -122,7 +126,7 @@ class LetterboxdScraperService:
                 response = await client.get(endpoint_url, timeout=6.0, follow_redirects=True)
                 if response.history:
                     for redirect_step in response.history:
-                        if not is_safe_scrape_url(str(redirect_step.url)):
+                        if not await is_safe_scrape_url(str(redirect_step.url)):
                             logger.warning(f"SSRF protection blocked redirect: {redirect_step.url}")
                             return None
 
@@ -156,7 +160,7 @@ class LetterboxdScraperService:
                 return [Movie(**item) for item in cached_watchlist]
 
         target_watchlist_url = f"https://letterboxd.com/{normalized_username}/watchlist/"
-        if not is_safe_scrape_url(target_watchlist_url):
+        if not await is_safe_scrape_url(target_watchlist_url):
             raise LetterboxdScraperError(f"SSRF protection rejected request for '{normalized_username}'.")
 
         async with httpx.AsyncClient(headers=DEFAULT_HEADERS, timeout=self.request_timeout) as http_client:
@@ -165,7 +169,7 @@ class LetterboxdScraperService:
                 response = await http_client.get(target_watchlist_url, follow_redirects=True)
                 if response.history:
                     for redirect in response.history:
-                        if not is_safe_scrape_url(str(redirect.url)):
+                        if not await is_safe_scrape_url(str(redirect.url)):
                             raise LetterboxdScraperError("SSRF protection: Unsafe redirect blocked.")
             except LetterboxdScraperError:
                 raise

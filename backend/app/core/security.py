@@ -1,3 +1,4 @@
+import asyncio
 import ipaddress
 import logging
 import re
@@ -109,13 +110,14 @@ def is_safe_ip(ip_str: str) -> bool:
         return False
 
 
-def is_safe_scrape_url(url: str, allowed_hosts: Optional[Set[str]] = None) -> bool:
+async def is_safe_scrape_url(url: str, allowed_hosts: Optional[Set[str]] = None) -> bool:
     """
-    Validates an outbound request URL for SSRF security:
+    Validates an outbound request URL for SSRF security asynchronously:
     1. Must use HTTPS.
     2. Host must be present on the scraping allowlist.
     3. Must not contain embedded credentials (user:pass@host).
     4. Resolved DNS IPs must be publicly routable (rejects private/cloud metadata IPs).
+    Uses asyncio.to_thread for non-blocking DNS resolution.
     """
     if not url:
         return False
@@ -146,9 +148,11 @@ def is_safe_scrape_url(url: str, allowed_hosts: Optional[Set[str]] = None) -> bo
         logger.warning(f"SSRF Check: Host '{hostname_lower}' not in scrape allowlist: {url}")
         return False
 
-    # Resolve DNS and verify that resolved IPs are public
+    # Resolve DNS asynchronously in a worker thread to avoid blocking the event loop
     try:
-        resolved_info = socket.getaddrinfo(hostname_lower, 443, proto=socket.IPPROTO_TCP)
+        resolved_info = await asyncio.to_thread(
+            socket.getaddrinfo, hostname_lower, 443, proto=socket.IPPROTO_TCP
+        )
         for entry in resolved_info:
             sockaddr = entry[4]
             ip_str = sockaddr[0]

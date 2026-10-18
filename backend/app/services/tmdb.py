@@ -105,7 +105,7 @@ def _clean_title_for_search(title: str) -> str:
     return re.sub(r"\s*\(\d{4}\)\s*", " ", title).strip()
 
 
-def _generate_fallback_details(slug: str, title: str) -> Dict:
+def generate_fallback_details(slug: str, title: str) -> Dict:
     """
     Generates deterministic mock details when no TMDB key is configured
     and the movie is not present in the fallback catalog.
@@ -130,6 +130,10 @@ def _generate_fallback_details(slug: str, title: str) -> Dict:
     }
 
 
+# Backward-compatible alias
+_generate_fallback_details = generate_fallback_details
+
+
 class TMDBEnricherService:
     """
     Implements MovieEnricherProtocol.
@@ -150,14 +154,14 @@ class TMDBEnricherService:
         language: str,
     ) -> Optional[Dict]:
         """Searches for a movie in the TMDB API and retrieves its detailed metadata."""
-        cache_key = f"tmdb_meta:{movie_slug}"
+        cache_key = f"tmdb_meta:{language}:{movie_slug}"
         cached_meta: Optional[Dict] = cache.get(cache_key)
         if cached_meta is not None:
             return cached_meta
 
         # Fallback if no API key is configured
         if not api_key:
-            fallback = _generate_fallback_details(movie_slug, movie_title)
+            fallback = generate_fallback_details(movie_slug, movie_title)
             cache.set(cache_key, fallback, expire=TMDB_CACHE_TTL_SECONDS)
             return fallback
 

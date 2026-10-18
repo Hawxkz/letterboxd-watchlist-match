@@ -8,8 +8,8 @@ from app.models import Movie, MatchRequest
 from app.core.cache import cache, clear_cache
 from app.core.security import validate_username_safety, is_safe_scrape_url, is_safe_ip
 from app.core.rate_limiter import match_rate_limiter
-from app.services.scraper import _extract_movies_from_soup
-from app.services.tmdb import _generate_fallback_details, FALLBACK_CATALOG
+from app.services.scraper import extract_movies_from_soup
+from app.services.tmdb import generate_fallback_details, FALLBACK_CATALOG
 from app.services.matcher import default_matcher_service
 
 client = TestClient(app)
@@ -145,7 +145,7 @@ def test_extract_movies_from_soup():
     </div>
     """
     soup = BeautifulSoup(sample_html, "html.parser")
-    movies = _extract_movies_from_soup(soup)
+    movies = extract_movies_from_soup(soup)
     assert len(movies) == 1
     assert movies[0]["slug"] == "past-lives"
     assert movies[0]["title"] == "Past Lives (2023)"
@@ -155,13 +155,13 @@ def test_extract_movies_from_soup():
 def test_tmdb_fallback_and_enrichment():
     """Tests TMDB fallback catalog lookup and deterministic mock generation."""
     # Movie from fallback catalog
-    inception_meta = _generate_fallback_details("inception", "Inception")
+    inception_meta = generate_fallback_details("inception", "Inception")
     assert inception_meta["rating"] == 8.4
     assert "Science Fiction" in inception_meta["genres"]
     assert inception_meta["runtime"] == 148
 
     # Unknown movie: deterministic mock
-    unknown_meta = _generate_fallback_details("some-rare-indie-film", "Some Rare Indie Film")
+    unknown_meta = generate_fallback_details("some-rare-indie-film", "Some Rare Indie Film")
     assert isinstance(unknown_meta["rating"], float)
     assert 6.0 <= unknown_meta["rating"] <= 9.0
     assert len(unknown_meta["genres"]) >= 1
@@ -196,7 +196,8 @@ def test_match_response_includes_tmdb_fields():
         assert matched_film["runtime"] == 148
 
 
-def test_ssrf_username_validation():
+@pytest.mark.anyio
+async def test_ssrf_username_validation():
     """Tests SSRF protections against path traversal, private IPs, and reserved Letterboxd paths."""
     # Valid usernames
     assert validate_username_safety("alice") == "alice"
@@ -235,11 +236,11 @@ def test_ssrf_username_validation():
     assert is_safe_ip("169.254.169.254") is False
     assert is_safe_ip("::1") is False
 
-    # Safe scraping URLs
-    assert is_safe_scrape_url("https://letterboxd.com/alice/watchlist/") is True
-    assert is_safe_scrape_url("http://letterboxd.com/alice/watchlist/") is False  # HTTPS only
-    assert is_safe_scrape_url("https://attacker.com/evil") is False              # Not whitelisted
-    assert is_safe_scrape_url("https://169.254.169.254/secret") is False         # Private IP
+    # Safe scraping URLs (asynchronous DNS check)
+    assert await is_safe_scrape_url("https://letterboxd.com/alice/watchlist/") is True
+    assert await is_safe_scrape_url("http://letterboxd.com/alice/watchlist/") is False  # HTTPS only
+    assert await is_safe_scrape_url("https://attacker.com/evil") is False              # Not whitelisted
+    assert await is_safe_scrape_url("https://169.254.169.254/secret") is False         # Private IP
 
 
 def test_cors_preflight_and_headers():
