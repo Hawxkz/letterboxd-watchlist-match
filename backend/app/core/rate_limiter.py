@@ -11,7 +11,6 @@ logger = logging.getLogger(__name__)
 
 class RateLimiter:
     """
-    KISS Sliding-Window In-Memory Rate Limiter.
     Limits the number of requests per sliding time window (default 60s) per client IP.
     Single Responsibility: Endpoint protection against overload and spamming.
     """
@@ -24,14 +23,34 @@ class RateLimiter:
         self._last_prune = time.time()
 
     def _get_client_ip(self, request: Request) -> str:
-        """Extracts the client IP from X-Forwarded-For header (when reverse proxied) or direct client host."""
-        forwarded = request.headers.get("X-Forwarded-For")
+        """
+        Extracts the client IP, preferring X-Forwarded-For, then X-Real-IP, then the ASGI client host.
+        This covers common deployment scenarios (reverse proxy setting X-Forwarded-For)
+        while falling back to request.client.host when present. As a last resort
+        returns the loopback address to keep the logic deterministic for tests.
+        """
+        # Prefer X-Forwarded-For when provided by a trusted reverse proxy
+        forwarded = request.headers.get("X-Forwarded-For") or request.headers.get("x-forwarded-for")
         if forwarded:
+            # First IP in the comma-separated list is the original client
             ip = forwarded.split(",")[0].strip()
             if ip:
                 return ip
-        if request.client and request.client.host:
-            return request.client.host
+
+        # Some proxies use X-Real-IP
+        real_ip = request.headers.get("X-Real-IP") or request.headers.get("x-real-ip")
+        if real_ip:
+            return real_ip.strip()
+
+        # Fall back to the ASGI client host if available
+        try:
+            client = getattr(request, "client", None)
+            if client and getattr(client, "host", None):
+                return client.host
+        except Exception:
+            pass
+
+        # Default deterministic fallback used in tests / unusual environments
         return "127.0.0.1"
 
     def _prune_stale_entries(self, now: float) -> None:
@@ -39,11 +58,11 @@ class RateLimiter:
         if now - self._last_prune < self.window_seconds:
             return
         self._last_prune = now
-        stale_ips = [
-            ip for ip, queue in self._history.items()
-            if not queue or queue[-1] < (now - self.window_seconds)
+        to_delete = [
+            ip for ip, q in self._history.items()
+            if not q or (now - q[-1] > self.window_seconds * 2)
         ]
-        for ip in stale_ips:
+        for ip in to_delete:
             del self._history[ip]
 
     def reset(self) -> None:
@@ -76,7 +95,7 @@ class RateLimiter:
             )
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail=f"Zu viele Anfragen. Bitte versuche es in {retry_after} Sekunden erneut.",
+                detail=f"Too many requests. Please retry after {retry_after} seconds.",
                 headers={
                     "Retry-After": str(retry_after),
                     "X-RateLimit-Limit": str(self.requests_per_window),
@@ -89,7 +108,6 @@ class RateLimiter:
         queue.append(now)
 
 
-# Preconfigured rate limiter instances
 # 1. General API limit (e.g. root, health checks): 60 requests / minute
 general_rate_limiter = RateLimiter(
     requests_per_window=int(os.getenv("RATE_LIMIT_GENERAL_PER_MINUTE", "60")),
