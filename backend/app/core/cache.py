@@ -4,6 +4,7 @@ import diskcache
 
 # Central directory for SQLite-backed diskcache in backend/.diskcache
 CACHE_DIR = Path(__file__).resolve().parent.parent.parent / ".diskcache"
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
 cache = diskcache.Cache(str(CACHE_DIR))
 
 # Standard cache expiration durations (TTLs)

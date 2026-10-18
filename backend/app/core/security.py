@@ -36,6 +36,8 @@ ALLOWED_SCRAPE_HOSTS: Set[str] = {
     "letterboxd.com",
     "www.letterboxd.com",
     "a.ltrbxd.com",
+    "s.ltrbxd.com",
+    "img.ltrbxd.com",
 }
 
 
