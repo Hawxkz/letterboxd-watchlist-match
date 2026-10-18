@@ -44,9 +44,10 @@ TMDB_LANGUAGE=en-US
 # CORS (Optional - defaults to http://localhost:5173,http://127.0.0.1:5173)
 CORS_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 
-# Rate Limiting (Optional - requests per minute)
+# Rate Limiting & Proxy Trust (Optional)
 RATE_LIMIT_MATCH_PER_MINUTE=15
 RATE_LIMIT_GENERAL_PER_MINUTE=60
+TRUST_PROXY_HEADERS=false
 ```
 
 ### Quickstart
@@ -138,9 +139,10 @@ TMDB_LANGUAGE=de-DE
 # CORS (Optional - Standard: http://localhost:5173,http://127.0.0.1:5173)
 CORS_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 
-# Rate Limiting (Optional - Anfragen pro Minute)
+# Rate Limiting & Proxy-Trust (Optional)
 RATE_LIMIT_MATCH_PER_MINUTE=15
 RATE_LIMIT_GENERAL_PER_MINUTE=60
+TRUST_PROXY_HEADERS=false
 ```
 
 ### Schnellstart

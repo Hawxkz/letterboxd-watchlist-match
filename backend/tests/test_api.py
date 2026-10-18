@@ -277,3 +277,27 @@ def test_rate_limiter_enforcement():
     finally:
         match_rate_limiter.reset()
         match_rate_limiter.requests_per_window = original_limit
+
+
+def test_rate_limiter_proxy_trust():
+    """Tests that X-Forwarded-For is only trusted when trust_proxy_headers is enabled."""
+    from fastapi import Request
+    from app.core.rate_limiter import RateLimiter
+
+    limiter_untrusted = RateLimiter(trust_proxy_headers=False)
+    limiter_trusted = RateLimiter(trust_proxy_headers=True)
+
+    # Simulated request with forged X-Forwarded-For header
+    scope = {
+        "type": "http",
+        "headers": [(b"x-forwarded-for", b"203.0.113.195, 70.41.3.18")],
+        "client": ("192.0.2.1", 12345),
+    }
+    mock_request = Request(scope)
+
+    # Untrusted limiter must ignore X-Forwarded-For and return the direct client host
+    assert limiter_untrusted._get_client_ip(mock_request) == "192.0.2.1"
+
+    # Trusted limiter must pick the original client IP from X-Forwarded-For
+    assert limiter_trusted._get_client_ip(mock_request) == "203.0.113.195"
+

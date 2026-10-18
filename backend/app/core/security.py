@@ -130,22 +130,22 @@ async def is_safe_scrape_url(url: str, allowed_hosts: Optional[Set[str]] = None)
         return False
 
     if parsed.scheme.lower() != "https":
-        logger.warning(f"SSRF Check: Insecure protocol rejected: {url}")
+        logger.warning(f"[SECURITY] [SSRF_BLOCKED] reason='insecure_protocol' url='{url}'")
         return False
 
     hostname = parsed.hostname
     if not hostname:
-        logger.warning(f"SSRF Check: Missing hostname in URL: {url}")
+        logger.warning(f"[SECURITY] [SSRF_BLOCKED] reason='missing_hostname' url='{url}'")
         return False
 
     # Block embedded credentials
     if parsed.username or parsed.password:
-        logger.warning(f"SSRF Check: URL contains credentials: {url}")
+        logger.warning(f"[SECURITY] [SSRF_BLOCKED] reason='embedded_credentials' url='{url}'")
         return False
 
     hostname_lower = hostname.lower()
     if hostname_lower not in allowed:
-        logger.warning(f"SSRF Check: Host '{hostname_lower}' not in scrape allowlist: {url}")
+        logger.warning(f"[SECURITY] [SSRF_BLOCKED] reason='host_not_allowed' host='{hostname_lower}' url='{url}'")
         return False
 
     # Resolve DNS asynchronously in a worker thread to avoid blocking the event loop
@@ -157,10 +157,10 @@ async def is_safe_scrape_url(url: str, allowed_hosts: Optional[Set[str]] = None)
             sockaddr = entry[4]
             ip_str = sockaddr[0]
             if not is_safe_ip(ip_str):
-                logger.warning(f"SSRF Check: Host '{hostname_lower}' resolved to non-public IP '{ip_str}'.")
+                logger.warning(f"[SECURITY] [SSRF_BLOCKED] reason='private_ip' host='{hostname_lower}' ip='{ip_str}'")
                 return False
     except Exception as e:
-        logger.warning(f"SSRF Check: DNS resolution failed for '{hostname_lower}': {e}")
+        logger.warning(f"[SECURITY] [SSRF_BLOCKED] reason='dns_failure' host='{hostname_lower}' error='{e}'")
         return False
 
     return True

@@ -2,7 +2,7 @@ import logging
 import os
 import time
 from collections import defaultdict, deque
-from typing import Dict
+from typing import Dict, Optional
 from fastapi import HTTPException, Request, status
 import app.core.config  # Ensures .env is loaded
 
@@ -15,34 +15,43 @@ class RateLimiter:
     Single Responsibility: Endpoint protection against overload and spamming.
     """
 
-    def __init__(self, requests_per_window: int = 15, window_seconds: int = 60, name: str = "default"):
+    def __init__(
+        self,
+        requests_per_window: int = 15,
+        window_seconds: int = 60,
+        name: str = "default",
+        trust_proxy_headers: Optional[bool] = None,
+    ):
         self.requests_per_window = requests_per_window
         self.window_seconds = window_seconds
         self.name = name
+        if trust_proxy_headers is None:
+            self.trust_proxy_headers = os.getenv("TRUST_PROXY_HEADERS", "false").lower() in ("true", "1", "yes")
+        else:
+            self.trust_proxy_headers = trust_proxy_headers
         self._history: Dict[str, deque] = defaultdict(deque)
         self._last_prune = time.time()
 
     def _get_client_ip(self, request: Request) -> str:
         """
-        Extracts the client IP, preferring X-Forwarded-For, then X-Real-IP, then the ASGI client host.
-        This covers common deployment scenarios (reverse proxy setting X-Forwarded-For)
-        while falling back to request.client.host when present. As a last resort
-        returns the loopback address to keep the logic deterministic for tests.
+        Extracts the client IP address.
+        Only evaluates X-Forwarded-For or X-Real-IP if trust_proxy_headers is enabled
+        (preventing IP spoofing when exposed directly without a trusted reverse proxy).
+        Falls back to ASGI client host or loopback address.
         """
-        # Prefer X-Forwarded-For when provided by a trusted reverse proxy
-        forwarded = request.headers.get("X-Forwarded-For") or request.headers.get("x-forwarded-for")
-        if forwarded:
-            # First IP in the comma-separated list is the original client
-            ip = forwarded.split(",")[0].strip()
-            if ip:
-                return ip
+        if self.trust_proxy_headers:
+            forwarded = request.headers.get("X-Forwarded-For") or request.headers.get("x-forwarded-for")
+            if forwarded:
+                # First IP in the comma-separated list is the original client
+                ip = forwarded.split(",")[0].strip()
+                if ip:
+                    return ip
 
-        # Some proxies use X-Real-IP
-        real_ip = request.headers.get("X-Real-IP") or request.headers.get("x-real-ip")
-        if real_ip:
-            return real_ip.strip()
+            real_ip = request.headers.get("X-Real-IP") or request.headers.get("x-real-ip")
+            if real_ip:
+                return real_ip.strip()
 
-        # Fall back to the ASGI client host if available
+        # Fall back to direct ASGI connection host
         try:
             client = getattr(request, "client", None)
             if client and getattr(client, "host", None):
@@ -90,8 +99,8 @@ class RateLimiter:
         if len(queue) >= self.requests_per_window:
             retry_after = max(1, int(queue[0] + self.window_seconds - now))
             logger.warning(
-                f"Rate limit exceeded on '{self.name}' for IP {ip}: "
-                f"{len(queue)}/{self.requests_per_window}. Retry after {retry_after}s."
+                f"[SECURITY] [RATE_LIMIT_EXCEEDED] ip='{ip}' limiter='{self.name}' "
+                f"count={len(queue)} limit={self.requests_per_window} retry_after={retry_after}s"
             )
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
