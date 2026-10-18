@@ -2,20 +2,19 @@ import os
 from typing import List
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import app.core.config  # Ensures .env is loaded
 
-import app.config  # Ensures .env / tmdb.env are loaded
-
-# Default origins for local development
+# Default allowed development origins
 DEFAULT_ALLOWED_ORIGINS: List[str] = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "http://localhost:3000",
 ]
 
-# Explicit HTTP methods permitted by the API (principle of least privilege)
+# Permitted HTTP methods (principle of least privilege)
 ALLOWED_METHODS: List[str] = ["GET", "POST", "OPTIONS"]
 
-# Explicit HTTP headers permitted by the API
+# Permitted HTTP headers
 ALLOWED_HEADERS: List[str] = [
     "Content-Type",
     "Accept",
@@ -25,10 +24,7 @@ ALLOWED_HEADERS: List[str] = [
 
 
 def get_allowed_origins() -> List[str]:
-    """
-    Retrieves allowed CORS origins from environment variable CORS_ALLOWED_ORIGINS
-    (comma-separated), falling back to default local dev URLs.
-    """
+    """Reads allowed CORS origins from CORS_ALLOWED_ORIGINS (comma-separated) or falls back to defaults."""
     env_origins = os.getenv("CORS_ALLOWED_ORIGINS", "").strip()
     if not env_origins:
         return DEFAULT_ALLOWED_ORIGINS
@@ -39,8 +35,8 @@ def get_allowed_origins() -> List[str]:
 
 def setup_cors(app: FastAPI) -> None:
     """
-    Configures and adds hardened CORS middleware to the FastAPI application.
-    Enforces strict origins, methods, and headers.
+    Configures hardened CORS middleware on the FastAPI application.
+    Strictly restricts origins, methods, and headers to those required.
     """
     origins = get_allowed_origins()
 
