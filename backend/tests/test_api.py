@@ -236,11 +236,24 @@ async def test_ssrf_username_validation():
     assert is_safe_ip("169.254.169.254") is False
     assert is_safe_ip("::1") is False
 
-    # Safe scraping URLs (asynchronous DNS check)
-    assert await is_safe_scrape_url("https://letterboxd.com/alice/watchlist/") is True
-    assert await is_safe_scrape_url("http://letterboxd.com/alice/watchlist/") is False  # HTTPS only
-    assert await is_safe_scrape_url("https://attacker.com/evil") is False              # Not whitelisted
-    assert await is_safe_scrape_url("https://169.254.169.254/secret") is False         # Private IP
+    # Safe scraping URLs (mocked DNS resolution to guarantee offline reliability)
+    mock_public_dns = [(None, None, None, None, ("104.26.1.1", 443))]
+    mock_private_dns = [(None, None, None, None, ("192.168.1.1", 443))]
+
+    with patch("socket.getaddrinfo", return_value=mock_public_dns):
+        assert await is_safe_scrape_url("https://letterboxd.com/alice/watchlist/") is True
+        assert await is_safe_scrape_url("https://a.ltrbxd.com/poster.jpg") is True
+        assert await is_safe_scrape_url("http://letterboxd.com/alice/watchlist/") is False  # HTTPS only
+        assert await is_safe_scrape_url("https://attacker.com/evil") is False              # Not whitelisted
+
+    # DNS rebinding / private IP resolution must be blocked
+    with patch("socket.getaddrinfo", return_value=mock_private_dns):
+        assert await is_safe_scrape_url("https://letterboxd.com/malicious") is False
+
+    # DNS failure must be blocked safely
+    import socket
+    with patch("socket.getaddrinfo", side_effect=socket.gaierror("Name resolution failed")):
+        assert await is_safe_scrape_url("https://letterboxd.com/dns-down") is False
 
 
 def test_cors_preflight_and_headers():
