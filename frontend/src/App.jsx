@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Header } from './components/Header';
 import { UserTagInput } from './components/UserTagInput';
 import { MovieCard } from './components/MovieCard';
@@ -13,9 +13,57 @@ import {
   PlayCircle,
   HelpCircle,
   Sparkles,
+  Share2,
+  Check,
 } from 'lucide-react';
+import { extractLetterboxdUsername } from './utils/letterboxd';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const LOCAL_STORAGE_KEY = 'letterboxd_matcher_recent_searches';
+
+const loadRecentSearches = () => {
+  try {
+    const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    console.error('Error loading recent searches from localStorage:', e);
+    return [];
+  }
+};
+
+const saveRecentSearch = (users) => {
+  if (!users || users.length < 2) return [];
+  try {
+    const current = loadRecentSearches();
+    const sortedCurrent = users.map((u) => u.toLowerCase()).sort().join(',');
+
+    const filtered = current.filter((item) => {
+      const itemUsers = Array.isArray(item) ? item : item.users || [];
+      return itemUsers.map((u) => u.toLowerCase()).sort().join(',') !== sortedCurrent;
+    });
+
+    const updated = [users, ...filtered].slice(0, 5);
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
+    return updated;
+  } catch (e) {
+    console.error('Error saving recent search:', e);
+    return [];
+  }
+};
+
+const updateUrlParams = (users) => {
+  try {
+    const url = new URL(window.location.href);
+    if (users && users.length > 0) {
+      url.searchParams.set('users', users.join(','));
+    } else {
+      url.searchParams.delete('users');
+    }
+    window.history.replaceState({}, '', url.toString());
+  } catch (e) {
+    console.error('Error updating URL params:', e);
+  }
+};
 
 function App() {
   const [usernames, setUsernames] = useState([]);
@@ -25,14 +73,24 @@ function App() {
   const [matchData, setMatchData] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState('all'); // 'all', 'perfect', 'partial'
+  const [recentSearches, setRecentSearches] = useState(() => loadRecentSearches());
+  const [isCopied, setIsCopied] = useState(false);
 
   const handleAddUser = (username) => {
-    setUsernames((prev) => [...prev, username]);
+    setUsernames((prev) => {
+      const next = [...prev, username];
+      updateUrlParams(next);
+      return next;
+    });
     setError(null);
   };
 
   const handleRemoveUser = (username) => {
-    setUsernames((prev) => prev.filter((u) => u !== username));
+    setUsernames((prev) => {
+      const next = prev.filter((u) => u !== username);
+      updateUrlParams(next);
+      return next;
+    });
     setError(null);
   };
 
@@ -40,10 +98,44 @@ function App() {
     setUsernames([]);
     setMatchData(null);
     setError(null);
+    updateUrlParams([]);
   };
 
-  const handleCompare = async () => {
-    if (usernames.length < 2) {
+  const handleSelectRecent = (selectedUsers) => {
+    setUsernames(selectedUsers);
+    updateUrlParams(selectedUsers);
+    setError(null);
+    handleCompare(selectedUsers);
+  };
+
+  const handleClearRecent = () => {
+    try {
+      localStorage.removeItem(LOCAL_STORAGE_KEY);
+      setRecentSearches([]);
+    } catch (e) {
+      console.error('Error clearing recent searches:', e);
+    }
+  };
+
+  const handleShareLink = async () => {
+    if (usernames.length === 0) return;
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('users', usernames.join(','));
+      const shareUrl = url.toString();
+
+      await navigator.clipboard.writeText(shareUrl);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2500);
+    } catch (err) {
+      console.error('Failed to copy share link:', err);
+    }
+  };
+
+  const handleCompare = async (usersToCompare = usernames) => {
+    const targetUsers = Array.isArray(usersToCompare) ? usersToCompare : usernames;
+
+    if (targetUsers.length < 2) {
       setError('Bitte gib mindestens 2 verschiedene Letterboxd-Usernamen an.');
       return;
     }
@@ -68,7 +160,7 @@ function App() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ usernames }),
+        body: JSON.stringify({ usernames: targetUsers }),
       });
 
       clearInterval(statusInterval);
@@ -82,6 +174,12 @@ function App() {
 
       const data = await response.json();
       setMatchData(data);
+
+      // Save to recent searches history
+      const updatedHistory = saveRecentSearch(targetUsers);
+      if (updatedHistory && updatedHistory.length > 0) {
+        setRecentSearches(updatedHistory);
+      }
     } catch (err) {
       clearInterval(statusInterval);
       setError(
@@ -92,6 +190,39 @@ function App() {
       setLoadingStatus('');
     }
   };
+
+  // Check URL params on initial mount
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const usersParam = params.get('users');
+      if (usersParam) {
+        const parsed = usersParam
+          .split(',')
+          .map((u) => extractLetterboxdUsername(u))
+          .filter(Boolean);
+
+        const seen = new Set();
+        const unique = [];
+        for (const u of parsed) {
+          const lower = u.toLowerCase();
+          if (!seen.has(lower)) {
+            seen.add(lower);
+            unique.push(u);
+          }
+        }
+
+        if (unique.length > 0) {
+          setUsernames(unique);
+          if (unique.length >= 2) {
+            handleCompare(unique);
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Error parsing URL params on load:', e);
+    }
+  }, []);
 
   // Filter movies based on search query (memoized for snappy UI response)
   const perfectMatches = useMemo(() => {
@@ -132,19 +263,22 @@ function App() {
             onRemoveUser={handleRemoveUser}
             onClearAll={handleClearAll}
             disabled={isLoading}
+            recentSearches={recentSearches}
+            onSelectRecent={handleSelectRecent}
+            onClearRecent={handleClearRecent}
           />
 
-          {/* Action button */}
+          {/* Action buttons */}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
             <button
               type="button"
               id="compare-btn"
-              onClick={handleCompare}
+              onClick={() => handleCompare(usernames)}
               disabled={isLoading || usernames.length < 2}
               className={`w-full sm:w-auto px-8 py-3.5 rounded-xl font-bold text-base flex items-center justify-center gap-2.5 shadow-xl transition-all duration-300 ${
                 isLoading || usernames.length < 2
                   ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-white/5'
-                  : 'bg-gradient-to-r from-[#00e054] to-[#00b343] text-black hover:from-[#05ff62] hover:to-[#00cc4c] hover:shadow-2xl hover:shadow-[#00e054]/25 hover:scale-[1.02] active:scale-[0.98]'
+                  : 'bg-gradient-to-r from-[#00e054] to-[#00b343] text-black hover:from-[#05ff62] hover:to-[#00cc4c] hover:shadow-2xl hover:shadow-[#00e054]/25 hover:scale-[1.02] active:scale-[0.98] cursor-pointer'
               }`}
             >
               {isLoading ? (
@@ -159,6 +293,30 @@ function App() {
                 </>
               )}
             </button>
+
+            {/* Share Link button */}
+            {usernames.length >= 2 && (
+              <button
+                type="button"
+                id="share-btn"
+                onClick={handleShareLink}
+                disabled={isLoading}
+                className="w-full sm:w-auto px-5 py-3.5 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 bg-[#161b22] hover:bg-[#1f2937] text-slate-200 border border-white/10 hover:border-white/20 transition-all duration-200 shadow-md active:scale-[0.98] cursor-pointer"
+                title="Link mit diesen Nutzern in die Zwischenablage kopieren"
+              >
+                {isCopied ? (
+                  <>
+                    <Check className="w-4 h-4 text-[#00e054]" />
+                    <span className="text-[#00e054] font-bold">Link kopiert!</span>
+                  </>
+                ) : (
+                  <>
+                    <Share2 className="w-4 h-4 text-cyan-400" />
+                    <span>Link teilen</span>
+                  </>
+                )}
+              </button>
+            )}
           </div>
 
           {/* Loading status indicator */}
@@ -196,6 +354,8 @@ function App() {
               onSearchChange={setSearchQuery}
               filterType={filterType}
               onFilterChange={setFilterType}
+              onShare={handleShareLink}
+              isCopied={isCopied}
             />
 
             {/* Check if search resulted in zero matches */}

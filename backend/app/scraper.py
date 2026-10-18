@@ -8,6 +8,7 @@ from bs4 import BeautifulSoup
 import diskcache
 
 from app.models import Movie
+from app.security import validate_username_safety, is_safe_scrape_url
 
 logger = logging.getLogger(__name__)
 
@@ -110,9 +111,19 @@ async def _resolve_poster_url(
     if cached_url:
         return cached_url
 
+    # SSRF protection: Ensure endpoint is an approved, safe HTTPS Letterboxd URL
+    if not is_safe_scrape_url(endpoint):
+        logger.warning(f"SSRF Protection blocked poster endpoint: {endpoint}")
+        return None
+
     async with semaphore:
         try:
             resp = await client.get(endpoint, timeout=6.0, follow_redirects=True)
+            if resp.history:
+                for redirect in resp.history:
+                    if not is_safe_scrape_url(str(redirect.url)):
+                        logger.warning(f"SSRF Protection blocked redirect: {redirect.url}")
+                        return None
             if resp.status_code == 200:
                 data = resp.json()
                 poster_url = data.get("url2x") or data.get("url")
@@ -130,9 +141,11 @@ async def scrape_user_watchlist_async(username: str, force_refresh: bool = False
     Scrapes the entire Letterboxd watchlist for a given username across all pages.
     Results are cached in diskcache with a 60-minute TTL.
     """
-    clean_user = username.strip().lower()
-    if not clean_user:
-        raise ValueError("Letterboxd-Nutzername darf nicht leer sein.")
+    # SSRF protection: Validate username format and reject path traversal or reserved words
+    try:
+        clean_user = validate_username_safety(username).lower()
+    except ValueError as ve:
+        raise LetterboxdScraperError(str(ve))
 
     cache_key = f"watchlist:{clean_user}"
     if not force_refresh:
@@ -142,11 +155,19 @@ async def scrape_user_watchlist_async(username: str, force_refresh: bool = False
             return [Movie(**item) for item in cached_data]
 
     base_url = f"https://letterboxd.com/{clean_user}/watchlist/"
-    
+    if not is_safe_scrape_url(base_url):
+        raise LetterboxdScraperError(f"SSRF-Schutz verweigerte Anfrage für '{clean_user}'.")
+
     async with httpx.AsyncClient(headers=DEFAULT_HEADERS, timeout=15.0) as client:
         # 1. Fetch first page
         try:
             resp = await client.get(base_url, follow_redirects=True)
+            if resp.history:
+                for redirect in resp.history:
+                    if not is_safe_scrape_url(str(redirect.url)):
+                        raise LetterboxdScraperError("SSRF-Schutz: Unsichere Weiterleitung blockiert.")
+        except LetterboxdScraperError:
+            raise
         except Exception as e:
             raise LetterboxdScraperError(f"Verbindungsfehler zu Letterboxd für '{username}': {e}")
 

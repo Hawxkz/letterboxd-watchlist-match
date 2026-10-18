@@ -1,5 +1,41 @@
+import re
+from urllib.parse import urlparse
 from typing import List, Optional, Dict
 from pydantic import BaseModel, Field, field_validator
+
+
+def extract_letterboxd_username(input_val: str) -> str:
+    """
+    Extracts a clean Letterboxd username from:
+    - raw username: 'alice'
+    - handle: '@alice'
+    - profile URL: 'https://letterboxd.com/alice/'
+    - watchlist URL: 'https://letterboxd.com/alice/watchlist/'
+    """
+    if not input_val:
+        return ""
+    val = input_val.strip()
+
+    if "letterboxd.com" in val.lower():
+        normalized = (
+            val
+            if (val.startswith("http://") or val.startswith("https://"))
+            else f"https://{val}"
+        )
+        try:
+            parsed = urlparse(normalized)
+            parts = [p for p in parsed.path.split("/") if p]
+            if parts:
+                return parts[0].lstrip("@").strip()
+        except Exception:
+            match = re.search(r"letterboxd\.com/([a-zA-Z0-9_-]+)", val, re.IGNORECASE)
+            if match:
+                return match.group(1).lstrip("@").strip()
+
+    return val.lstrip("@").rstrip("/").strip()
+
+
+from app.security import validate_username_safety
 
 
 class Movie(BaseModel):
@@ -10,12 +46,19 @@ class Movie(BaseModel):
 
 
 class MatchRequest(BaseModel):
-    usernames: List[str] = Field(..., min_length=2, description="List of Letterboxd usernames (min 2)")
+    usernames: List[str] = Field(..., min_length=2, description="List of Letterboxd usernames or profile URLs (min 2)")
 
     @field_validator("usernames")
     @classmethod
     def validate_usernames(cls, v: List[str]) -> List[str]:
-        cleaned = [u.strip() for u in v if u and u.strip()]
+        cleaned = []
+        for raw in v:
+            extracted = extract_letterboxd_username(raw)
+            if extracted:
+                # Validates against path traversal, special characters, and reserved names (SSRF mitigation)
+                validated = validate_username_safety(extracted)
+                cleaned.append(validated)
+
         if len(cleaned) < 2:
             raise ValueError("Mindestens 2 gültige Letterboxd-Usernamen sind erforderlich.")
         # Check for duplicates ignoring case

@@ -31,6 +31,18 @@ def test_match_validation_duplicate_users():
     assert response.status_code == 422
 
 
+def test_match_validation_with_profile_urls():
+    from app.models import MatchRequest
+    req = MatchRequest(usernames=[
+        "https://letterboxd.com/alice/",
+        "https://letterboxd.com/bob/watchlist/",
+        "http://www.letterboxd.com/charlie/films",
+        "@dave",
+        "eve",
+    ])
+    assert req.usernames == ["alice", "bob", "charlie", "dave", "eve"]
+
+
 def test_match_logic_with_mocked_scraper():
     movies_alice = [
         Movie(slug="movie-shared-all", title="Shared by All", poster_url="https://example.com/p1.jpg"),
@@ -172,4 +184,91 @@ def test_match_response_includes_tmdb_fields():
         assert match["rating"] == 8.4
         assert "Science Fiction" in match["genres"]
         assert match["runtime"] == 148
+
+
+def test_ssrf_username_validation():
+    from app.security import validate_username_safety, is_safe_scrape_url, is_safe_ip
+
+    # Valid usernames
+    assert validate_username_safety("alice") == "alice"
+    assert validate_username_safety("bob_123") == "bob_123"
+    assert validate_username_safety("film-fan") == "film-fan"
+
+    # Directory traversal attempts
+    with pytest.raises(ValueError):
+        validate_username_safety("../admin")
+
+    with pytest.raises(ValueError):
+        validate_username_safety("alice/bob")
+
+    with pytest.raises(ValueError):
+        validate_username_safety("alice?foo=bar")
+
+    # IP addresses passed as usernames
+    with pytest.raises(ValueError):
+        validate_username_safety("127.0.0.1")
+
+    with pytest.raises(ValueError):
+        validate_username_safety("169.254.169.254")
+
+    # Reserved letterboxd paths
+    with pytest.raises(ValueError):
+        validate_username_safety("film")
+
+    with pytest.raises(ValueError):
+        validate_username_safety("search")
+
+    # Safe IP checks
+    assert is_safe_ip("8.8.8.8") is True
+    assert is_safe_ip("127.0.0.1") is False
+    assert is_safe_ip("10.0.0.1") is False
+    assert is_safe_ip("192.168.1.1") is False
+    assert is_safe_ip("169.254.169.254") is False
+    assert is_safe_ip("::1") is False
+
+    # Safe scrape URLs
+    assert is_safe_scrape_url("https://letterboxd.com/alice/watchlist/") is True
+    assert is_safe_scrape_url("http://letterboxd.com/alice/watchlist/") is False  # Must be HTTPS
+    assert is_safe_scrape_url("https://attacker.com/evil") is False  # Untrusted host
+    assert is_safe_scrape_url("https://169.254.169.254/secret") is False  # Private IP
+
+
+def test_cors_preflight_and_headers():
+    # Preflight OPTIONS request
+    headers = {
+        "Origin": "http://localhost:5173",
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "Content-Type",
+    }
+    response = client.options("/api/match", headers=headers)
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
+    assert "POST" in response.headers["access-control-allow-methods"]
+
+
+def test_rate_limiter_enforcement():
+    from app.rate_limiter import match_rate_limiter
+
+    match_rate_limiter.reset()
+    original_limit = match_rate_limiter.requests_per_window
+    match_rate_limiter.requests_per_window = 3  # Set low limit for fast testing
+
+    try:
+        # First 3 requests with dummy validation should pass through limiter
+        for _ in range(3):
+            # Send invalid request body just to reach endpoint and trigger rate limit counter
+            resp = client.post("/api/match", json={"usernames": ["dave"]})
+            # 422 indicates request passed rate limiter and reached validation
+            assert resp.status_code == 422
+
+        # 4th request must be rejected by RateLimiter with 429
+        resp = client.post("/api/match", json={"usernames": ["dave"]})
+        assert resp.status_code == 429
+        assert "Retry-After" in resp.headers
+        assert "X-RateLimit-Limit" in resp.headers
+        assert "Zu viele Anfragen" in resp.json()["detail"]
+    finally:
+        match_rate_limiter.reset()
+        match_rate_limiter.requests_per_window = original_limit
+
 

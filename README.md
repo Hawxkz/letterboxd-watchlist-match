@@ -22,7 +22,9 @@ A full-stack application designed to compare two or more Letterboxd watchlists a
   - Distinct result categories:
     - **Perfect Matches**: Movies present on all submitted watchlists.
     - **Partial Overlaps**: Movies present on multiple watchlists, tagged with the profiles that have them.
-  - Live title search and filter tabs (All, Perfect Matches, Partial Overlaps).
+    - Live title search and filter tabs (All, Perfect Matches, Partial Overlaps).
+    - **Shareable URL links**: Automatically synchronizes usernames to the URL (`?users=user1,user2`) and provides one-click share buttons. Opening a share link automatically runs the comparison.
+    - **Recent searches history**: Remembers recently compared user combinations in `localStorage` for fast one-click re-matching.
 
 ### Quickstart
 
@@ -68,7 +70,7 @@ The frontend will be available at `http://localhost:5173`.
 From the `backend` directory:
 
 ```bash
-pytest tests
+python -m pytest tests
 ```
 
 ---
@@ -83,15 +85,19 @@ Eine Full-Stack-Anwendung zum Vergleichen von zwei oder mehr Letterboxd-Watchlis
   - Scrapt Letterboxd-Watchlists über alle paginierten Seiten (Slug, Titel und hochauflösende Filmposter).
   - Integriertes Caching mit `diskcache` (TTL: 60 Minuten) zur Vermeidung redundanter Anfragen.
   - Endpunkt `POST /api/match`: Empfängt mindestens zwei Usernamen, ermittelt die Schnittmengen und sortiert absteigend (Filme auf allen Listen stehen ganz oben).
-  - CORS-Freigabe für das Frontend (`http://localhost:5173`).
+  - **SSRF-Schutz**: Strikte Validierung von Nutzernamen (Regex, Pfadtraversierungs-Sperre, reservierte Letterboxd-Pfade) und DNS/IP-Prüfung zur Blockierung interner Netzwerk- und Cloud-Metadaten-Ziele (127.0.0.1, 169.254.169.254, RFC-1918).
+  - **Gehärtetes CORS**: Strikt konfigurierbare Origins (Standard: localhost:5173, anpassbar via `CORS_ALLOWED_ORIGINS`), beschränkt auf erforderliche Methoden (`GET`, `POST`, `OPTIONS`) und Header.
+  - **Rate Limiting**: Leichtgewichtiges, speicheroptimiertes Sliding-Window-Rate-Limiting (Standard: 15 Anfragen/Min für `/api/match`, 60/Min für Basispfade) mit `429 Too Many Requests` und `Retry-After`-Headern.
 - **Frontend (React + Vite + Tailwind CSS)**:
   - Modernes Cinema-Dark-Design mit Letterboxd-Farbtönen.
-  - Tag-basiertes Eingabefeld zum dynamischen Hinzufügen und Entfernen von Profilen.
+  - Tag-basiertes Eingabefeld zum dynamischen Hinzufügen von Profilen (unterstützt Nutzernamen, `@handle` sowie vollständige Letterboxd-Profil- oder Watchlist-URLs wie `https://letterboxd.com/username/`).
   - Ladeanimation und Statusmeldungen während des Scraping-Vorgangs.
   - Strukturierte Trefferanzeige:
     - **Volltreffer**: Filme, die auf den Watchlists aller Profile vorkommen.
     - **Teilüberschneidungen**: Filme, die bei mehreren Profilen vorkommen, inklusive Profil-Tags.
   - Schnelle Live-Suche und Filtertabs (Alle, Nur Volltreffer, Nur Teil-Matches).
+  - **Teilbare URL-Links**: Spiegelt Profile automatisch in der URL (`?users=user1,user2`) und bietet 1-Klick-Share-Buttons. Beim Öffnen eines Share-Links wird der Vergleich direkt automatisch gestartet.
+  - **Verlauf & Zuletzt gesucht**: Speichert die letzten Profil-Kombinationen im `localStorage` für blitzschnellen erneuten Abgleich.
 
 ### Schnellstart
 
@@ -137,5 +143,5 @@ Das Frontend läuft unter `http://localhost:5173`.
 Im `backend`-Verzeichnis:
 
 ```bash
-pytest tests
+python -m pytest tests
 ```

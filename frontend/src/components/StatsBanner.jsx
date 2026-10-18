@@ -1,5 +1,5 @@
 import React from 'react';
-import { Users, Film, CheckCircle2, Layers, Search } from 'lucide-react';
+import { Users, Film, CheckCircle2, Layers, Search, Share2, Check } from 'lucide-react';
 
 export function StatsBanner({
   matchData,
@@ -7,6 +7,8 @@ export function StatsBanner({
   onSearchChange,
   filterType,
   onFilterChange,
+  onShare,
+  isCopied,
 }) {
   if (!matchData) return null;
 
@@ -57,9 +59,31 @@ export function StatsBanner({
 
       {/* Profile Watchlist breakdown */}
       <div className="mb-5 pb-5 border-b border-white/5">
-        <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2.5 block">
-          Watchlist-Größen:
-        </span>
+        <div className="flex items-center justify-between mb-2.5">
+          <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block">
+            Watchlist-Größen:
+          </span>
+          {onShare && (
+            <button
+              type="button"
+              onClick={onShare}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#0d1117] hover:bg-slate-800 border border-white/10 hover:border-[#00e054]/40 text-xs font-medium text-slate-300 hover:text-white transition-all shadow-sm cursor-pointer"
+              title="Ergebnis-Link teilen"
+            >
+              {isCopied ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-[#00e054]" />
+                  <span className="text-[#00e054] font-semibold">Link kopiert!</span>
+                </>
+              ) : (
+                <>
+                  <Share2 className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Link teilen</span>
+                </>
+              )}
+            </button>
+          )}
+        </div>
         <div className="flex flex-wrap gap-2">
           {usernames.map((user) => (
             <div

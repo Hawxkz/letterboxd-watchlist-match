@@ -1,8 +1,9 @@
 import asyncio
 import logging
 from typing import Dict, List, Set
-from fastapi import FastAPI, HTTPException, status
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, HTTPException, status, Depends
+from app.cors import setup_cors
+from app.rate_limiter import match_rate_limiter, general_rate_limiter
 
 from app.models import MatchRequest, MatchResponse, MatchedMovie, Movie
 from app.scraper import (
@@ -23,21 +24,11 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# CORS configuration: Allow frontend at http://localhost:5173
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:3000",
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# CORS configuration (hardened & configurable via app.cors)
+setup_cors(app)
 
 
-@app.get("/")
+@app.get("/", dependencies=[Depends(general_rate_limiter)])
 def read_root():
     return {
         "app": "Letterboxd Watchlist Matcher API",
@@ -46,16 +37,21 @@ def read_root():
     }
 
 
-@app.get("/api/health")
+@app.get("/api/health", dependencies=[Depends(general_rate_limiter)])
 def health_check():
     return {"status": "ok"}
 
 
-@app.post("/api/match", response_model=MatchResponse)
+@app.post(
+    "/api/match",
+    response_model=MatchResponse,
+    dependencies=[Depends(match_rate_limiter)],
+)
 async def match_watchlists(request: MatchRequest):
     """
     Accepts a list of Letterboxd usernames (min 2), scrapes/retrieves their watchlists,
     and returns matched movies sorted descending by overlap count.
+    Protected by RateLimiter and SSRF validation.
     """
     usernames = request.usernames
     total_users = len(usernames)
