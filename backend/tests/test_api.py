@@ -38,6 +38,16 @@ def test_match_validation_duplicate_users():
     assert response.status_code == 422
 
 
+def test_match_validation_empty_or_whitespace_users():
+    """Pydantic validation: Empty or whitespace-only elements must be rejected with HTTP 422."""
+    response_empty = client.post("/api/match", json={"usernames": ["alice", "", "bob"]})
+    assert response_empty.status_code == 422
+
+    response_whitespace = client.post("/api/match", json={"usernames": ["alice", "   ", "bob"]})
+    assert response_whitespace.status_code == 422
+
+
+
 def test_match_validation_with_profile_urls():
     """Tests automatic extraction and normalization of usernames from full Letterboxd profile URLs."""
     request_data = MatchRequest(usernames=[

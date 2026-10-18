@@ -27,10 +27,11 @@ class MatchRequest(BaseModel):
         for raw in v:
             # Extract clean username from full URL, @handle, or plain text
             extracted = extract_letterboxd_username(raw)
-            if extracted:
-                # SSRF prevention: Validate format, reject path traversal and reserved paths
-                validated = validate_username_safety(extracted)
-                cleaned.append(validated)
+            if not extracted:
+                raise ValueError("Usernames cannot be empty or contain only whitespace.")
+            # SSRF prevention: Validate format, reject path traversal and reserved paths
+            validated = validate_username_safety(extracted)
+            cleaned.append(validated)
 
         if len(cleaned) < 2:
             raise ValueError("At least 2 valid Letterboxd usernames are required.")
