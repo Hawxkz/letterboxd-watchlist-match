@@ -52,7 +52,7 @@ export function Footer() {
         {/* Creator Attribution & General App Disclaimer */}
         <div className="flex flex-col sm:flex-row items-center justify-center gap-2 text-xs text-slate-400">
           <p className="text-[11px] text-slate-500">
-            Letterboxd Watchlist Matcher • Nicht offiziell mit Letterboxd verbunden
+            Watchlist Matcher • Unabhängiges Studentenprojekt (nicht offiziell mit Letterboxd verbunden)
           </p>
           <span className="hidden sm:inline text-slate-700">•</span>
           <p className="flex items-center gap-1 text-xs">

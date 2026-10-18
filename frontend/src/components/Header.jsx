@@ -11,15 +11,11 @@ export function Header() {
       <div className="relative max-w-4xl mx-auto px-4">
         {/* Brand pill */}
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900/80 border border-white/10 text-xs font-medium text-slate-300 mb-4 backdrop-blur-sm shadow-sm">
-          <div className="flex -space-x-1">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#00e054]" />
-            <span className="w-2.5 h-2.5 rounded-full bg-[#40bcf4]" />
-            <span className="w-2.5 h-2.5 rounded-full bg-[#ff8000]" />
-          </div>
-          <span>Letterboxd Match Engine</span>
+          <Clapperboard className="w-3.5 h-3.5 text-slate-400" />
+          <span>Watchlist Matcher (Inoffiziell)</span>
           <span className="text-slate-500">•</span>
           <span className="text-[#00e054] flex items-center gap-1 font-semibold">
-            <Sparkles className="w-3 h-3" /> Live Scraper
+            <Sparkles className="w-3 h-3" /> Live Sync
           </span>
         </div>
 
