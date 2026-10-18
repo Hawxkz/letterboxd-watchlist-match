@@ -6,25 +6,48 @@ Find common movie favorites across multiple Letterboxd watchlists.
 
 ## English
 
-A full-stack application designed to compare two or more Letterboxd watchlists and find common films for movie nights.
+A modern, full-stack application designed to compare two or more Letterboxd watchlists, find common films for movie nights, and enrich them with ratings, genres, and runtimes.
 
 ### Features
 
 - **Backend (FastAPI)**:
-  - Scrapes Letterboxd watchlists across all paginated pages (extracting slug, title, and high-resolution poster URLs).
-  - Built-in caching via `diskcache` (TTL: 60 minutes) to eliminate redundant requests.
-  - Endpoint `POST /api/match`: Accepts a list of usernames (min. 2), computes watchlist intersections, and sorts them descending (movies on all profiles appear at the top).
-  - CORS enabled for the frontend (`http://localhost:5173`).
+  - **Modular Architecture (SRP)**: Clear separation into `app.core` (infrastructure) and `app.services` (business logic) with protocol interfaces (`WatchlistScraperProtocol`, `MovieEnricherProtocol`) and dependency injection.
+  - **Letterboxd Web Scraping**: Scrapes Letterboxd watchlists across all paginated pages (extracting slug, title, and high-resolution posters).
+  - **TMDB Enrichment**:
+    - Enriches matched movies with official TMDB ratings (★ vote average), genre badges, and runtime.
+    - Zero-config fallback catalog with realistic metadata when no API key is set.
+    - Configurable via `tmdb.env` or `.env` (`TMDB_API_KEY`, `TMDB_LANGUAGE`).
+  - **High-Performance Caching**: Centralized `diskcache` (TTL: 60 minutes for watchlists, 24 hours for TMDB and posters).
+  - **Security & Hardening**:
+    - **SSRF Protection**: Asynchronous DNS resolution via background threadpool, strict username schema validation, blocked reserved routes, and private IP rejection (RFC 1918, link-local, cloud metadata `169.254.169.254`).
+    - **Hardened CORS**: Configurable allowed origins (`CORS_ALLOWED_ORIGINS`), restricted to required methods (`GET`, `POST`, `OPTIONS`).
+    - **Sliding-Window Rate Limiting**: In-memory rate limiting with HTTP 429 and `Retry-After` headers.
 - **Frontend (React + Vite + Tailwind CSS)**:
-  - Modern cinema-dark user interface with Letterboxd-inspired accent colors.
-  - Tag-based input system to dynamically add and remove Letterboxd usernames.
-  - Loading animation and status updates during active scraping.
-  - Distinct result categories:
-    - **Perfect Matches**: Movies present on all submitted watchlists.
-    - **Partial Overlaps**: Movies present on multiple watchlists, tagged with the profiles that have them.
-    - Live title search and filter tabs (All, Perfect Matches, Partial Overlaps).
-    - **Shareable URL links**: Automatically synchronizes usernames to the URL (`?users=user1,user2`) and provides one-click share buttons. Opening a share link automatically runs the comparison.
-    - **Recent searches history**: Remembers recently compared user combinations in `localStorage` for fast one-click re-matching.
+  - **Cinema-Dark UI**: Clean, responsive interface with Letterboxd-inspired styling.
+  - **Flexible Input**: Supports usernames, `@handles`, and full Letterboxd profile/watchlist URLs (e.g. `https://letterboxd.com/username/watchlist/`).
+  - **Match Categories & Live Filtering**:
+    - **Perfect Matches**: Films present on 100% of the compared profiles.
+    - **Partial Overlaps**: Films shared by multiple profiles, showing user avatars/tags.
+    - Filter by title search, genre tags, and sort by match count, rating, runtime, or title.
+  - **Shareable URLs**: Automatically reflects usernames in query parameters (`?users=alice,bob`) with 1-click share buttons. Opening a share link automatically runs the comparison.
+  - **Recent Searches History**: Remembers recently compared profile groups in `localStorage` for instant re-matching.
+
+### Environment Configuration
+
+Create a `tmdb.env` or `.env` file in the `backend/` directory:
+
+```env
+# TMDB API (Optional - realistic fallback catalog is used if omitted)
+TMDB_API_KEY=your_tmdb_api_key_here
+TMDB_LANGUAGE=en-US
+
+# CORS (Optional - defaults to http://localhost:5173,http://127.0.0.1:5173)
+CORS_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+
+# Rate Limiting (Optional - requests per minute)
+RATE_LIMIT_MATCH_PER_MINUTE=15
+RATE_LIMIT_GENERAL_PER_MINUTE=60
+```
 
 ### Quickstart
 
@@ -49,7 +72,7 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
 
-The API will be available at `http://127.0.0.1:8000`. Interactive documentation is available at `http://127.0.0.1:8000/docs`.
+The API will be available at `http://127.0.0.1:8000`. Interactive Swagger documentation is at `http://127.0.0.1:8000/docs`.
 
 #### 2. Frontend Setup
 
@@ -70,34 +93,55 @@ The frontend will be available at `http://localhost:5173`.
 From the `backend` directory:
 
 ```bash
-python -m pytest tests
+python -m pytest tests -v
 ```
 
 ---
 
 ## Deutsch
 
-Eine Full-Stack-Anwendung zum Vergleichen von zwei oder mehr Letterboxd-Watchlists, um gemeinsame Film-Favoriten zu finden.
+Eine moderne Full-Stack-Anwendung zum Vergleichen von zwei oder mehr Letterboxd-Watchlists, um gemeinsame Film-Favoriten für Filmabende zu finden – angereichert mit Bewertungen, Genres und Laufzeiten.
 
 ### Features
 
 - **Backend (FastAPI)**:
-  - Scrapt Letterboxd-Watchlists über alle paginierten Seiten (Slug, Titel und hochauflösende Filmposter).
-  - Integriertes Caching mit `diskcache` (TTL: 60 Minuten) zur Vermeidung redundanter Anfragen.
-  - Endpunkt `POST /api/match`: Empfängt mindestens zwei Usernamen, ermittelt die Schnittmengen und sortiert absteigend (Filme auf allen Listen stehen ganz oben).
-  - **SSRF-Schutz**: Strikte Validierung von Nutzernamen (Regex, Pfadtraversierungs-Sperre, reservierte Letterboxd-Pfade) und DNS/IP-Prüfung zur Blockierung interner Netzwerk- und Cloud-Metadaten-Ziele (127.0.0.1, 169.254.169.254, RFC-1918).
-  - **Gehärtetes CORS**: Strikt konfigurierbare Origins (Standard: localhost:5173, anpassbar via `CORS_ALLOWED_ORIGINS`), beschränkt auf erforderliche Methoden (`GET`, `POST`, `OPTIONS`) und Header.
-  - **Rate Limiting**: Leichtgewichtiges, speicheroptimiertes Sliding-Window-Rate-Limiting (Standard: 15 Anfragen/Min für `/api/match`, 60/Min für Basispfade) mit `429 Too Many Requests` und `Retry-After`-Headern.
+  - **Modulare Architektur (SRP)**: Klare Trennung in `app.core` (Infrastruktur) und `app.services` (Business-Logik) mit Interface-Protokollen (`WatchlistScraperProtocol`, `MovieEnricherProtocol`) und Dependency Injection.
+  - **Letterboxd Web-Scraping**: Paginierungsfestes Auslesen vollständiger Watchlists (Slug, Titel und hochauflösende Filmposter).
+  - **TMDB-Anreicherung (The Movie Database)**:
+    - Ergänzt Treffer um offizielle TMDB-Bewertungen (★ Community Score), Genre-Tags und Laufzeiten.
+    - Zero-Config-Fallback-Katalog mit realistischen Daten, falls kein API-Key hinterlegt ist.
+    - Konfigurierbar über `tmdb.env` oder `.env` (`TMDB_API_KEY`, `TMDB_LANGUAGE`).
+  - **Zentraler Diskcache**: Gecachte Watchlists (TTL: 60 Minuten) und TMDB-Metadaten (TTL: 24 Stunden) vermeiden redundante Anfragen.
+  - **Sicherheit & Härtung**:
+    - **SSRF-Schutz**: Asynchrone DNS-Prüfung via Threadpool, Validierung der Nutzernamen-Syntax, Blockierung reservierter Letterboxd-Pfade und privater IP-Adressen (RFC 1918, Link-Local, Cloud-Metadata `169.254.169.254`).
+    - **Gehärtetes CORS**: Strikt konfigurierbare Origins (`CORS_ALLOWED_ORIGINS`), beschränkt auf erforderliche Methoden (`GET`, `POST`, `OPTIONS`).
+    - **Sliding-Window Rate Limiting**: Schutz vor Denial-of-Service mit HTTP 429 und `Retry-After`-Headern.
 - **Frontend (React + Vite + Tailwind CSS)**:
-  - Modernes Cinema-Dark-Design mit Letterboxd-Farbtönen.
-  - Tag-basiertes Eingabefeld zum dynamischen Hinzufügen von Profilen (unterstützt Nutzernamen, `@handle` sowie vollständige Letterboxd-Profil- oder Watchlist-URLs wie `https://letterboxd.com/username/`).
-  - Ladeanimation und Statusmeldungen während des Scraping-Vorgangs.
-  - Strukturierte Trefferanzeige:
-    - **Volltreffer**: Filme, die auf den Watchlists aller Profile vorkommen.
-    - **Teilüberschneidungen**: Filme, die bei mehreren Profilen vorkommen, inklusive Profil-Tags.
-  - Schnelle Live-Suche und Filtertabs (Alle, Nur Volltreffer, Nur Teil-Matches).
-  - **Teilbare URL-Links**: Spiegelt Profile automatisch in der URL (`?users=user1,user2`) und bietet 1-Klick-Share-Buttons. Beim Öffnen eines Share-Links wird der Vergleich direkt automatisch gestartet.
-  - **Verlauf & Zuletzt gesucht**: Speichert die letzten Profil-Kombinationen im `localStorage` für blitzschnellen erneuten Abgleich.
+  - **Cinema-Dark UI**: Stilvolles, responsives Design mit Letterboxd-Farbtönen.
+  - **Flexible Eingabe**: Unterstützt reine Nutzernamen, `@handle` und vollständige Letterboxd-URLs (z. B. `https://letterboxd.com/nutzer/watchlist/`).
+  - **Treffer-Kategorien & Live-Filterung**:
+    - **Volltreffer**: Filme, die auf den Listen ausnahmslos aller verglichenen Profile stehen.
+    - **Teilüberschneidungen**: Filme auf mehreren Listen, mit Profil-Badges der jeweiligen Nutzer.
+    - Filterbar nach Titeln, Genres und sortierbar nach Übereinstimmungen, Bewertung, Laufzeit oder Alphabet.
+  - **Teilbare URL-Links**: Spiegelt Profile in der Adresszeile (`?users=alice,bob`) und bietet 1-Klick-Share-Buttons. Beim Öffnen startet der Abgleich direkt automatisch.
+  - **Verlauf & Zuletzt gesucht**: Speichert letzte Profil-Kombinationen im `localStorage` für blitzschnellen erneuten Abgleich.
+
+### Konfiguration (Umgebungsvariablen)
+
+Erstelle bei Bedarf eine `tmdb.env` oder `.env` im `backend/`-Ordner:
+
+```env
+# TMDB API (Optional - ohne Key greift der Fallback-Katalog)
+TMDB_API_KEY=dein_tmdb_api_key_hier
+TMDB_LANGUAGE=de-DE
+
+# CORS (Optional - Standard: http://localhost:5173,http://127.0.0.1:5173)
+CORS_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+
+# Rate Limiting (Optional - Anfragen pro Minute)
+RATE_LIMIT_MATCH_PER_MINUTE=15
+RATE_LIMIT_GENERAL_PER_MINUTE=60
+```
 
 ### Schnellstart
 
@@ -143,5 +187,5 @@ Das Frontend läuft unter `http://localhost:5173`.
 Im `backend`-Verzeichnis:
 
 ```bash
-python -m pytest tests
+python -m pytest tests -v
 ```
